@@ -1,21 +1,14 @@
-#Requires -RunAsAdministrator
-<#
-.SYNOPSIS
-    LibreOffice Shortcut Branding — giả lập Office 365
-.DESCRIPTION
-    Tạo icon hybrid (split background + badge "L") và đặt lại tên shortcut
-    kiểu "Word - LibreWriter" cho Start Menu và Desktop.
-    Icon được generate bằng System.Drawing, không cần công cụ ngoài.
-.NOTES
-    Yêu cầu : LibreOffice đã cài, Windows 10/11, PowerShell 5.1+
-    Chạy với: PowerShell -ExecutionPolicy Bypass -File Set-LibreOfficeBranding.ps1
-#>
+# Set-LibreOfficeBranding-fixed.ps1
+# Requires running as Administrator
+# LibreOffice Shortcut Branding — giả lập Office 365
+
+# Metadata
+# Run with: PowerShell -ExecutionPolicy Bypass -File Set-LibreOfficeBranding-fixed.ps1
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-
 $ICON_DIR   = "$env:ProgramFiles\LibreOffice\brand-icons"
 $LO_PROGRAM = "$env:ProgramFiles\LibreOffice\program"
 $START_MENU = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\LibreOffice"
@@ -36,7 +29,6 @@ $APP_MAP = [ordered]@{
 }
 
 # ── ICON GENERATION ───────────────────────────────────────────────────────────
-
 Add-Type -AssemblyName System.Drawing
 
 function ConvertFrom-HexColor([string]$hex) {
@@ -59,8 +51,7 @@ function New-IconBitmap {
     #>
     param([int]$Size, [string]$Letter, [string]$ColorLeft, [string]$ColorRight)
 
-    $bmp = New-Object System.Drawing.Bitmap($Size, $Size,
-               [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $bmp = New-Object System.Drawing.Bitmap($Size, $Size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode     = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
@@ -69,7 +60,7 @@ function New-IconBitmap {
     $cR = ConvertFrom-HexColor $ColorRight
     $r  = [int]($Size * 0.16)   # corner radius
 
-    # ── Rounded-rect path ──────────────────────────────────────────────────────
+    # Rounded rect path
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
     $path.AddArc(0,           0,           $r*2, $r*2, 180, 90)
     $path.AddArc($Size-$r*2,  0,           $r*2, $r*2, 270, 90)
@@ -77,60 +68,58 @@ function New-IconBitmap {
     $path.AddArc(0,           $Size-$r*2, $r*2, $r*2,  90, 90)
     $path.CloseFigure()
 
-    # ── Nền trái ──────────────────────────────────────────────────────────────
+    # Left fill
     $bL = New-Object System.Drawing.SolidBrush($cL)
     $g.FillPath($bL, $path)
 
-    # ── Nền phải (clip = giao của rounded-rect và nửa phải) ──────────────────
-    $bR           = New-Object System.Drawing.SolidBrush($cR)
-    $roundedRgn   = New-Object System.Drawing.Region($path)
-    $roundedRgn.Intersect([System.Drawing.RectangleF]::new(
-        [float]($Size / 2), 0.0, [float]($Size), [float]$Size))
+    # Right fill clipped to half
+    $bR = New-Object System.Drawing.SolidBrush($cR)
+    $roundedRgn = New-Object System.Drawing.Region($path)
+    $roundedRgn.Intersect([System.Drawing.RectangleF]::new([float]($Size / 2), 0.0, [float]$Size, [float]$Size))
     $g.SetClip($roundedRgn, [System.Drawing.Drawing2D.CombineMode]::Replace)
     $g.FillRectangle($bR, [float]($Size / 2), 0.0, [float]$Size, [float]$Size)
     $g.ResetClip()
     $roundedRgn.Dispose()
 
-    # ── Chữ cái chính ─────────────────────────────────────────────────────────
+    # Main letter
     $letterPx = [float]($Size * 0.56)
-    $lFont    = New-Object System.Drawing.Font(
-        'Segoe UI', $letterPx,
-        [System.Drawing.FontStyle]::Bold,
-        [System.Drawing.GraphicsUnit]::Pixel)
+    $lFont    = New-Object System.Drawing.Font('Segoe UI', $letterPx, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
     $sf = New-Object System.Drawing.StringFormat
     $sf.Alignment     = [System.Drawing.StringAlignment]::Center
     $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
     $wBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-    # Dịch lên nhẹ để nhường chỗ badge
     $letterRect = [System.Drawing.RectangleF]::new(0, -([float]($Size * 0.04)), [float]$Size, [float]$Size)
     $g.DrawString($Letter, $lFont, $wBrush, $letterRect, $sf)
 
-    # ── Badge "L" (bỏ qua ở 16px — quá nhỏ) ─────────────────────────────────
+    # Badge L
     if ($Size -ge 32) {
         $bs  = [int]($Size * 0.28)
         $bx  = $Size - $bs - [int]($Size * 0.04)
         $by  = $Size - $bs - [int]($Size * 0.04)
-        $pen = New-Object System.Drawing.Pen(
-            [System.Drawing.Color]::FromArgb(45, 0, 0, 0), [float]($Size * 0.012))
+        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, 0, 0, 0), [float]($Size * 0.012))
 
         $g.FillEllipse([System.Drawing.Brushes]::White, $bx, $by, $bs, $bs)
         $g.DrawEllipse($pen, $bx, $by, $bs, $bs)
 
-        $bFont   = New-Object System.Drawing.Font(
-            'Segoe UI', [float]($bs * 0.54),
-            [System.Drawing.FontStyle]::Bold,
-            [System.Drawing.GraphicsUnit]::Pixel)
-        $loBrush = New-Object System.Drawing.SolidBrush(
-            [System.Drawing.Color]::FromArgb(0x1D, 0x60, 0x96))
+        $bFont   = New-Object System.Drawing.Font('Segoe UI', [float]($bs * 0.54), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+        $loBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0x1D, 0x60, 0x96))
         $badgeRect = [System.Drawing.RectangleF]::new([float]$bx, [float]$by, [float]$bs, [float]$bs)
         $g.DrawString('L', $bFont, $loBrush, $badgeRect, $sf)
 
-        $pen.Dispose(); $bFont.Dispose(); $loBrush.Dispose()
+        $pen.Dispose()
+        $bFont.Dispose()
+        $loBrush.Dispose()
     }
 
-    # ── Cleanup (giữ $bmp để caller dùng) ────────────────────────────────────
-    $g.Dispose(); $path.Dispose()
-    $bL.Dispose(); $bR.Dispose(); $lFont.Dispose(); $wBrush.Dispose(); $sf.Dispose()
+    # Cleanup
+    $g.Dispose()
+    $path.Dispose()
+    $bL.Dispose()
+    $bR.Dispose()
+    $lFont.Dispose()
+    $wBrush.Dispose()
+    $sf.Dispose()
+
     return $bmp
 }
 
@@ -138,7 +127,6 @@ function Save-IcoFile {
     <#
     .DESCRIPTION
         Ghép nhiều PNG (256/48/32/16) vào 1 file .ico multi-resolution
-        theo spec ICO (ICONDIR + ICONDIRENTRY + image data).
     #>
     param([string]$OutputPath, [string]$Letter, [string]$CL, [string]$CR)
 
@@ -157,38 +145,36 @@ function Save-IcoFile {
     $w   = New-Object System.IO.BinaryWriter($ico)
 
     # ICONDIR header
-    $w.Write([uint16]0)                  # Reserved
-    $w.Write([uint16]1)                  # Type = ICO
-    $w.Write([uint16]$streams.Count)     # Image count
+    $w.Write([uint16]0)
+    $w.Write([uint16]1)
+    $w.Write([uint16]$streams.Count)
 
-    # ICONDIRENTRY × N  (6 + N×16 bytes sebelum data)
     $dataOffset = 6 + ($streams.Count * 16)
     $cursor     = [uint32]$dataOffset
 
     for ($i = 0; $i -lt $streams.Count; $i++) {
         $dim = [byte]$(if ($sizes[$i] -eq 256) { 0 } else { $sizes[$i] })
-        $w.Write([byte]$dim)              # Width  (0 = 256)
-        $w.Write([byte]$dim)              # Height
-        $w.Write([byte]0)                 # ColorCount
-        $w.Write([byte]0)                 # Reserved
-        $w.Write([uint16]1)               # Planes
-        $w.Write([uint16]32)              # BitCount
+        $w.Write([byte]$dim)
+        $w.Write([byte]$dim)
+        $w.Write([byte]0)
+        $w.Write([byte]0)
+        $w.Write([uint16]1)
+        $w.Write([uint16]32)
         $w.Write([uint32]$streams[$i].Length)
         $w.Write([uint32]$cursor)
         $cursor += [uint32]$streams[$i].Length
     }
 
-    # Image data
     foreach ($ms in $streams) { $w.Write($ms.ToArray()) }
 
     [System.IO.File]::WriteAllBytes($OutputPath, $ico.ToArray())
 
-    $w.Dispose(); $ico.Dispose()
+    $w.Dispose()
+    $ico.Dispose()
     foreach ($ms in $streams) { $ms.Dispose() }
 }
 
 # ── SHORTCUT MANAGEMENT ───────────────────────────────────────────────────────
-
 function Set-LnkShortcut {
     param(
         [string]$LnkPath,
@@ -197,14 +183,17 @@ function Set-LnkShortcut {
         [string]$Description
     )
     $shell = New-Object -ComObject WScript.Shell
-    $lnk   = $shell.CreateShortcut($LnkPath)
-    $lnk.TargetPath       = $Target
-    $lnk.IconLocation     = "$IconPath,0"
-    $lnk.Description      = $Description
-    $lnk.WorkingDirectory = Split-Path $Target -Parent
-    $lnk.Save()
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($lnk)  | Out-Null
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($shell) | Out-Null
+    try {
+        $lnk   = $shell.CreateShortcut($LnkPath)
+        $lnk.TargetPath       = $Target
+        $lnk.IconLocation     = "$IconPath,0"
+        $lnk.Description      = $Description
+        $lnk.WorkingDirectory = Split-Path $Target -Parent
+        $lnk.Save()
+    } finally {
+        if ($lnk) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($lnk) | Out-Null }
+        if ($shell) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($shell) | Out-Null }
+    }
 }
 
 function Clear-IconCache {
@@ -224,7 +213,6 @@ function Clear-IconCache {
 }
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
-
 Write-Host "`n=== LibreOffice Brand Shortcut Script ===" -ForegroundColor Cyan
 
 # Kiểm tra LO có cài không
@@ -250,7 +238,7 @@ foreach ($exe in $APP_MAP.Keys) {
         Write-Host '[OK]' -ForegroundColor Green
     } catch {
         Write-Host '[FAIL]' -ForegroundColor Red
-        Write-Warning "  $_"
+        Write-Warning "  $($_.Exception.Message)"
     }
 }
 
@@ -258,8 +246,7 @@ foreach ($exe in $APP_MAP.Keys) {
 Write-Host "`n[2/3] Rebuilding shortcuts" -ForegroundColor Cyan
 
 # Xóa hết shortcut cũ trong Start Menu LO
-Get-ChildItem $START_MENU -Filter '*.lnk' -ErrorAction SilentlyContinue |
-    Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem $START_MENU -Filter '*.lnk' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 foreach ($exe in $APP_MAP.Keys) {
     $app    = $APP_MAP[$exe]
